@@ -1,60 +1,75 @@
-![Upload APP logo](https://github.com/user-attachments/assets/4b8145b6-db05-415b-9d1c-511b88dfff83)
+[🇨🇿 Česká verze README](README.cs.md)
 
-GitHub akce pro nahrávání Docker obrazů do TdA registry.
+GitHub action used to **build** and **upload** your Docker images to [Tour de Cloud](https://tourde.cloud).
 
-## ❓ Jak se GitHub akce používá
+> [!WARNING]
+> The action is guaranteed to fail if the team has not yet paid the starting fee for the competition. 
+
+## ❓ How to use
+
+There are 2 main steps to make sure your application builds and uploads successfully:
+
+1) Make sure your project has a `.github/workflows/deploy.yml` file with the following(or similar) content:
+
+    ```yaml
+    name: Build and push Web App to TdA
+    
+    on:
+      push:
+        branches:
+          - main
+    
+    permissions:
+      contents: read
+    
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - name: Check Out Repo
+            uses: actions/checkout@v4
+    
+          - name: Upload to TdA
+            uses: Student-Cyber-Games/upload-app@v1
+            with:
+              tdc_token: ${{ secrets.TDC_TOKEN }}
+    ```
+    
+    This will trigger a build and upload action on every push to the `main` branch. You can change this to any branch you want.
+    
+> [!IMPORTANT] 
+> Make sure to set the `TDC_TOKEN` secret in your repository settings. [How to create?](https://docs.github.com/en/actions/security-for-github-actions/security-guides/using-secrets-in-github-actions#creating-secrets-for-a-repository)
+
+2) Make sure your project has a `tourdeapp.yaml` file in the root directory of your repository. This file is used to configure the build process and specify the details of your web app. Here is an example configuration:
+
+    ```yaml
+    # $schema: https://portalbush.tourde.cloud/static/schema.json
+    # ... (the rest of your configuration - see guides to create in TdC documentation)
+    build:
+      - name: frontend
+        context: .
+        dockerfile: ./apps/web/Dockerfile
+      - name: backend
+        context: .
+        dockerfile: ./apps/server/Dockerfile
+    
+    ```
+    
+    This example specifies 2 docker images to be built: `frontend` and `backend`(will differ in your app). You can adjust the `context` and `dockerfile` paths according to your project structure.
 
 > [!TIP]
-> Pokud nechcete psát vlastní `Dockerfile`, můžete využít jednu z naších [šablon](https://github.com/orgs/Tour-de-App/repositories?type=source&q=template:true+archived:false). A jestli jste se už s Dockerem setkali, tak můžete využít [šablony pouze s GitHub akcí](https://github.com/Tour-de-App/generic-boilerplate)
-
-1. Vytvořte si vlastní `Dockerfile`
-2. Ve složce `.github/workflows` vytvořte nový soubor `upload.yml`
-3. Do GitHub akce vložte tento kód, který sestaví váš Docker obraz a poté ho nahraje do TdA registry
-```yml
-name: Build and push to TdA
-on:
-  push:
-    branches:
-      - main
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check Out Repo
-        uses: actions/checkout@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
-      - name: Build
-        uses: docker/build-push-action@v6.8.0
-        with:
-          context: ./
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          tags: tda-generic:latest
-          outputs: type=docker,dest=/tmp/tda-generic.tar
-
-      - name: Upload to TdA
-        uses: Tour-de-App/upload-app@tda-25
-        with:
-          team_token: ${{ secrets.TEAM_TOKEN }}
-          image_name: tda-generic
-          image_path: /tmp/tda-generic.tar
-```
-4. Přejděte na [stránku pro vygenerování tokenu](https://odevzdavani.tourdeapp.cz/app/team-token) a vygenerujte si vlastní speciální token, kterým se ověříte oproti TdA registry
-5. Token [nastavte](https://docs.github.com/en/actions/security-for-github-actions/security-guides/using-secrets-in-github-actions#creating-secrets-for-a-repository) jako secret s názvem `TEAM_TOKEN` v GitHub Actions
-6. Pushněte nový commit do GitHubu a v záložce *Actions* si zobrazte stav vaší GitHub akce
-
-
-
-> [!CAUTION]
-> GitHub akce v tomto příkladu je nastavena tak, aby se spustila při každém commitu do větve `main`. Pokud pracujete na svém kódu pouze na větvi `main`, může se stát, že využijete všechny svoje minuty na používání GitHub Actions a akce už nepůjde spustit. Proto doporučujeme vývoj provádět na jiné větvi a pak využít pull request. Více informací o tom, jak používat Git, můžete najít [zde](https://tourdeapp.cz/webinare/odevzdej-a-otestuj-git-github-a-testovaci-platforma)
-
-## ℹ️ Parametry
-| Vstup | Popis | Povinný |
-|-------|-------|---------|
-| `image_name` | Název Docker obrazu | Ano | 
-| `image_path` | Cesta k Docker obrazu | Ano | 
-| `team_token` | Přístupový token | Ano |
-
+> The `tourdeapp.yaml` file supports build-time Docker args and bash environment substitution. You can specify them under the `args` section for each build target. For example:
+> ```yaml
+> build:
+>  - name: frontend
+>    context: .
+>    dockerfile: ./apps/web/Dockerfile
+>    args:
+>      REACT_APP_API_URL: "https://api.example.com"
+>      REACT_APP_API_KEY: {{API_KEY_ENV_VAR}}
+> ```
+> Note that, in order to have the `API_KEY_ENV_VAR` substituted correctly, you need to put it in the `env` section of the GitHub action, like so:
+> ```yaml
+> env:
+>   API_KEY_ENV_VAR: ${{ secrets.API_KEY_ENV_VAR }}
+> ```
