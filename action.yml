@@ -8,6 +8,10 @@ inputs:
   tdc_token:
     description: "Access token"
     required: true
+  base_domain:
+    description: "Base domain for the application"
+    default: "portalbush.tourde.cloud"
+    
 runs:
   using: "composite"
   steps:
@@ -29,15 +33,18 @@ runs:
           echo "❌ tourdeapp.yaml not found!"
           exit 1
         fi
-        curl -o schema.json --fail-with-body https://portalbush.tourde.cloud/static/schema.json
+
         perl -pe 's/\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/defined $ENV{$1} ? $ENV{$1} : $&/ge' tourdeapp.yaml > tourdeapp.tmp && mv tourdeapp.tmp tourdeapp.yaml
+
+        curl -o schema.json --fail-with-body https://${{ inputs.base_domain }}/static/schema.json
         yq eval -o=json tourdeapp.yaml > tourdeapp.json
         ajv --spec=draft2020 validate -s schema.json -d tourdeapp.json
+
     - name: Check if paid
       id: check_payment
       shell: bash
       run: |
-        response=$(curl "https://authmesh.tourde.cloud/payment" \
+        response=$(curl "https://${{ inputs.base_domain }}/api/public/v1/payment" \
           -H "Authorization: Bearer ${{ inputs.tdc_token }}" -s)
 
         paid=$(echo "$response" | jq -r '.paid')
@@ -50,15 +57,17 @@ runs:
           printf "######################################################################################\n\n"
           exit 1
         fi
+
         echo "documentId=$documentId" >> $GITHUB_OUTPUT
         echo "slug=$slug" >> $GITHUB_OUTPUT
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
     - name: Build Docker images
       shell: bash
       env:
-        REGISTRY_URL: registry.tourde.cloud
+        REGISTRY_URL: registry.tourde.beer
         REGISTRY_PASSWORD: ${{ inputs.tdc_token }}
       run: |
         set -e
@@ -82,6 +91,7 @@ runs:
           echo "Building Docker image with Dockerfile: $dockerfile, context: $context, tag: $REGISTRY_URL/${image_fqn}, args: $build_args"
           docker build -f "$dockerfile" $build_args --cache-from=type=gha --cache-to=type=gha,mode=max -t $REGISTRY_URL/${image_fqn} $context
         done
+
         docker login $REGISTRY_URL --username user --password $REGISTRY_PASSWORD
         for i in $(yq eval '.build | keys | .[]' tourdeapp.yaml); do
           docker push $REGISTRY_URL/${{ steps.check_payment.outputs.slug }}/$(yq eval ".build[$i].name" tourdeapp.yaml):$(git rev-parse --short HEAD)
@@ -91,9 +101,12 @@ runs:
       shell: bash
       run: |
         set -e
+
         commit_hash=$(git rev-parse --short HEAD)
+        
         branch_name=${GITHUB_REF#refs/heads/}
         echo "Uploading configuration for commit $commit_hash on branch $branch_name"
-        curl --fail-with-body -X POST "https://authmesh.tourde.cloud/${{ steps.check_payment.outputs.documentId }}/config" \
+        
+        curl --fail-with-body -X POST "https://${{ inputs.base_domain }}/api/public/v1/${{ steps.check_payment.outputs.documentId }}/config" \
         -H "Authorization: Bearer ${{ inputs.tdc_token }}" \
         -Ffile=@tourdeapp.yaml -Fbranch="$branch_name" -Fcommit="$commit_hash"
