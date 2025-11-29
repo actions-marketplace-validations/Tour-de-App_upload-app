@@ -8,10 +8,13 @@ inputs:
   tdc_token:
     description: "Access token"
     required: true
-  base_domain:
-    description: "Base domain for the application"
+  api_domain:
+    description: "Prefix for the service"
     default: "portalbush.tourde.cloud"
-    
+  registry_domain:
+    description: "Registry domain"
+    default: "registry.tourde.cloud"
+
 runs:
   using: "composite"
   steps:
@@ -36,7 +39,7 @@ runs:
 
         perl -pe 's/\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/defined $ENV{$1} ? $ENV{$1} : $&/ge' tourdeapp.yaml > tourdeapp.tmp && mv tourdeapp.tmp tourdeapp.yaml
 
-        curl -o schema.json --fail-with-body https://${{ inputs.base_domain }}/static/schema.json
+        curl -o schema.json --fail-with-body https://${{ inputs.api_domain }}/static/schema.json
         yq eval -o=json tourdeapp.yaml > tourdeapp.json
         ajv --spec=draft2020 validate -s schema.json -d tourdeapp.json
 
@@ -44,7 +47,7 @@ runs:
       id: check_payment
       shell: bash
       run: |
-        response=$(curl "https://${{ inputs.base_domain }}/api/public/v1/payment" \
+        response=$(curl "https://${{ inputs.api_domain }}/api/public/v1/payment" \
           -H "Authorization: Bearer ${{ inputs.tdc_token }}" -s)
 
         paid=$(echo "$response" | jq -r '.paid')
@@ -67,7 +70,7 @@ runs:
     - name: Build Docker images
       shell: bash
       env:
-        REGISTRY_URL: registry.tourde.beer
+        REGISTRY_URL: ${{ inputs.registry_domain }}
         REGISTRY_PASSWORD: ${{ inputs.tdc_token }}
       run: |
         set -e
@@ -107,6 +110,6 @@ runs:
         branch_name=${GITHUB_REF#refs/heads/}
         echo "Uploading configuration for commit $commit_hash on branch $branch_name"
         
-        curl --fail-with-body -X POST "https://${{ inputs.base_domain }}/api/public/v1/${{ steps.check_payment.outputs.documentId }}/config" \
+        curl --fail-with-body -X POST "https://${{ inputs.api_domain }}/api/public/v1/${{ steps.check_payment.outputs.documentId }}/config" \
         -H "Authorization: Bearer ${{ inputs.tdc_token }}" \
         -Ffile=@tourdeapp.yaml -Fbranch="$branch_name" -Fcommit="$commit_hash"
