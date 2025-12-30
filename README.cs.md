@@ -65,7 +65,7 @@ Jsou dva hlavní kroky, aby se aplikace úspěšně sestavila a nahrála:
             uses: actions/checkout@v4
     
           - name: Upload to TdA
-            uses: Student-Cyber-Games/upload-app@v1
+            uses: Student-Cyber-Games/upload-app@tda-26
             with:
               tdc_token: ${{ secrets.TDC_TOKEN }}
     ```
