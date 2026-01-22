@@ -19,7 +19,7 @@ runs:
   using: "composite"
   steps:
     - name: Checkout
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
 
     - uses: actions/setup-node@v4
       with:
@@ -47,16 +47,35 @@ runs:
       id: check_payment
       shell: bash
       run: |
-        response=$(curl "https://${{ inputs.api_domain }}/api/public/v1/payment" \
-          -H "Authorization: Bearer ${{ inputs.tdc_token }}" -s)
+        response=$(curl -s -w "\n%{http_code}" "https://${{ inputs.api_domain }}/api/public/v1/payment" \
+          -H "Authorization: Bearer ${{ inputs.tdc_token }}")
 
-        paid=$(echo "$response" | jq -r '.paid')
-        documentId=$(echo "$response" | jq -r '.documentId')
-        slug=$(echo "$response" | jq -r '.slug')
+        http_body=$(printf "%s" "$response" | sed '$d')
+        http_code=$(printf "%s" "$response" | tail -n 1)
+
+        if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+          error_message=$(echo "$http_body" | jq -r '.error.message // "Unknown error occurred"')
+
+          printf "HTTP Status : %s\n" "$http_code"
+          printf "Message     : %s\n" "$error_message"
+
+          exit 1
+        fi
+
+        paid=$(echo "$http_body" | jq -r '.paid // empty')
+        documentId=$(echo "$http_body" | jq -r '.documentId // empty')
+        slug=$(echo "$http_body" | jq -r '.slug // empty')
+
+        if [ -z "$paid" ] || [ -z "$documentId" ] || [ -z "$slug" ]; then
+          printf "\nERROR: Successful response missing required fields\n"
+          printf "Response body:\n%s\n\n" "$http_body"
+          exit 1
+        fi
 
         if [ "$paid" != "true" ]; then
           printf "\n\n######################################################################################\n"
-          printf "# Please pay the entry fee to deploy your application(syncs are made every 8 hours.) #\n"
+          printf "# Payment required: please pay the entry fee to deploy your application.             #\n"
+          printf "# Syncs are made every 8 hours.                                                       #\n"
           printf "######################################################################################\n\n"
           exit 1
         fi
